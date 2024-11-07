@@ -68,3 +68,45 @@ fit %>%
 ```
 
 
+# Diagnostics 
+
+EDA
+```{r}
+nyc_airbnb %>%  
+  ggplot(aes(x = stars, y = price)) + 
+  geom_point() + 
+  stat_smooth(method = "lm")
+```
+
+Diagnostics
+```{r}
+modelr::add_residuals(nyc_airbnb, fit) %>% 
+  ggplot(aes(x = resid)) + geom_histogram()
+```
+
+```{r}
+modelr::add_residuals(nyc_airbnb, fit) %>% 
+  ggplot(aes(x = borough, y = resid)) + 
+  geom_violin() +
+  ylim(-200, 500)
+```
+
+
+Residuals against stars
+
+```{r}
+modelr::add_residuals(nyc_airbnb, fit) %>% 
+  ggplot(aes(x = stars, y = resid)) + 
+  geom_point()
+```
+
+Residuals against fitted values
+
+```{r}
+nyc_airbnb %>% 
+  modelr::add_residuals(fit) %>% 
+  modelr::add_predictions(fit) %>% 
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point()
+```
+
