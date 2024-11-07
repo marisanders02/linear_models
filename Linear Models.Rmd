@@ -1,0 +1,70 @@
+---
+title: "Linear Models"
+author: "Mari Sanders"
+date: "`r Sys.Date()`"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(p8105.datasets)
+
+set.seed(1)
+```
+
+```{r}
+data("nyc_airbnb")
+
+nyc_airbnb <- 
+  nyc_airbnb %>% 
+  mutate(stars = review_scores_location / 2) %>% 
+  rename(
+    borough = neighbourhood_group,
+    neighborhood = neighbourhood) %>%  
+  filter(borough != "Staten Island") %>% 
+  select(price, stars, borough, neighborhood, room_type) %>% 
+  mutate(
+    borough = fct_infreq(borough), 
+    room_type = fct_infreq(room_type)
+  )
+
+
+```
+
+# Fit Models 
+
+Simple Model 
+
+```{r}
+fit <- lm(price ~ stars, nyc_airbnb)
+
+summary(fit)
+names(summary(fit))
+
+coef(fit)
+
+fit %>% 
+broom::tidy() %>% 
+  select(term, estimate, p.value)
+
+fit %>% 
+  broom::glance()
+```
+
+More Complex Model 
+
+```{r}
+fit <- 
+  lm(price ~ stars + borough, data = nyc_airbnb)
+
+fit %>%  
+  broom::tidy() %>% 
+  select(term, estimate, p.value) %>% 
+  mutate(
+    term = str_replace(term, "borough", "Borough:")
+  ) %>% 
+  knitr::kable(digits = 3)
+```
+
+
