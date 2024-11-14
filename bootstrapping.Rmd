@@ -1,0 +1,241 @@
+---
+title: "Bootstrapping"
+
+author: "Mari Sanders"
+
+date: "`r Sys.Date()`"
+output: github_document
+---
+
+Loading Packages 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(modelr)
+library(p8105.datasets)
+set.seed(1)
+```
+
+Bootstrapping 
+
+Make up some data 
+
+```{r}
+n_samp <- 250 
+
+sim_df_constant <- 
+  tibble(
+    x = rnorm(n_samp, 1, 1),
+    error = rnorm(n_samp, 0,1),
+    y = 2 + 3*x + error
+  )
+
+sim_df_nonconstant <- 
+  sim_df_constant %>% 
+  mutate(
+  error = error * 0.75 * x, 
+  y = 2+ 3*x + error
+  )
+
+```
+
+```{r}
+sim_df_constant %>% ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  stat_smooth(method = "lm")
+```
+
+```{r}
+sim_df_nonconstant %>% ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  stat_smooth(method = "lm")
+```
+
+Look at regression results 
+
+```{r}
+sim_df_constant %>% 
+  lm(y~x, data = .) %>% 
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
+```
+
+```{r}
+sim_df_nonconstant %>% 
+  lm(y~x, data = .) %>% 
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
+```
+
+# Draw a bootstrap sample 
+
+- Need to be the same size as the original 
+
+```{r}
+boot_sample <- function(df) {
+  
+  boot_df <- 
+    sample_frac(df, replace = TRUE) %>% 
+    arrange(x)
+  
+  return(boot_df)
+}
+```
+
+Try running this 
+
+```{r}
+sim_df_nonconstant %>% 
+  boot_sample() %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point(alpha = 0.5) + 
+  stat_smooth(method = "lm")
+```
+
+Doing this as part of an analysis 
+
+```{r}
+sim_df_nonconstant %>% 
+  boot_sample() %>% lm(y~x, data =.)
+```
+
+# Repeat
+
+```{r}
+boot_straps <- 
+  tibble(
+    strap_number = 1:1000
+  ) %>% 
+  mutate(
+    strap_sample = map(strap_number, \(i) boot_sample(df = sim_df_nonconstant)), 
+    models = map(strap_sample, \(df) lm(y~x, data = df)), 
+    results = map(models, broom::tidy)
+  )
+
+bootstrap_results <- 
+  boot_straps %>% 
+  select(strap_number, results) %>% 
+  unnest(results) %>% 
+  group_by(term) %>% 
+  summarize(
+    boot_se = sd(estimate)
+  ) %>% 
+  knitr::kable(digits = 3)
+```
+
+```{r}
+boot_straps <- 
+  tibble(
+    strap_number = 1:1000
+  ) %>% 
+  mutate(
+    strap_sample = map(strap_number, \(i) boot_sample(df = sim_df_constant)), 
+    models = map(strap_sample, \(df) lm(y~x, data = df)), 
+    results = map(models, broom::tidy)
+  )
+
+bootstrap_results <- 
+  boot_straps %>% 
+  select(strap_number, results) %>% 
+  unnest(results) %>% 
+  group_by(term) %>% 
+  summarize(
+    boot_se = sd(estimate)
+  ) %>% 
+  knitr::kable(digits = 3)
+```
+
+
+## Bootstrap with modelr 
+
+```{r}
+boot_straps <- 
+  sim_df_constant %>% 
+  modelr::bootstrap(1000) %>% 
+  mutate(
+    strap = map(strap, as_tibble), 
+    models = map(strap, \(df) lm(y~x, data = df)), 
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(.id, results) %>% 
+  unnest(results) 
+```
+
+# What do you report? 
+
+```{r}
+boot_straps %>% 
+  group_by(term) %>% 
+  summarize(
+    boot_est = mean(estimate),
+    boot_se = sd(estimate), 
+    boot_ci_ll = quantile(estimate, 0.025), 
+    boot_ci_ul = quantile(estimate, 0.975)
+  )
+```
+
+- estimates, confidence intervals 
+
+## Airbnb
+
+```{r}
+data("nyc_airbnb")
+
+manhattan_df <- 
+  nyc_airbnb %>%  
+  mutate(stars = review_scores_location / 2) %>%  
+  rename(
+    borough = neighbourhood_group,
+    neighborhood = neighbourhood) %>% 
+  filter(borough == "Manhattan") %>%  
+  drop_na() %>%  
+  select(price, stars, room_type)
+```
+
+plot data 
+
+```{r}
+manhattan_df %>% 
+  ggplot(aes(x = stars, y = price)) + 
+  geom_point() + 
+  stat_smooth(method = "lm", se = FALSE)
+```
+
+
+fit linear model 
+
+```{r}
+manhattan_df %>% 
+  lm(price ~ stars + room_type, data = .) %>% 
+  broom::tidy()
+```
+
+Bootstrap 
+
+```{r}
+boot_results <- 
+  manhattan_df %>% 
+  modelr::bootstrap(1000) %>% 
+  mutate(
+    strap = map(strap, as_tibble), 
+    models = map(strap, \(df) lm(price ~ stars + room_type, data = df)), 
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(.id, results) %>% 
+  unnest(results) 
+boot_results %>% 
+  filter(term == "stars") %>% 
+  ggplot(aes(estimate)) + 
+  geom_density()
+boot_results %>% 
+  group_by(term) %>% 
+  summarize(
+    boot_est = mean(estimate),
+    boot_se = sd(estimate), 
+    boot_ci_ll = quantile(estimate, 0.025), 
+    boot_ci_ul = quantile(estimate, 0.975)
+  )
+```
+
+
